@@ -127,7 +127,7 @@ def main(num_epochs=NEPOCH):
         output_size=W_word_embedding.shape[1],
         W=l_hypo_embed.W)
 	#hypothsis encode
-	l_hypo_encode1 = lasagne.layers.GRULayer(l_hypo_embed, GRUENCODE, mask_input=l_mask_h)
+    l_hypo_encode1 = lasagne.layers.GRULayer(l_hypo_embed, GRUENCODE, mask_input=l_mask_h)
     l_hypo_encode1_dpout = lasagne.layers.DropoutLayer(l_hypo_encode1, p=DPOUT, rescale=True)
     l_hypo_encode2 = lasagne.layers.GRULayer(l_hypo_embed_dpout, GRUENCODE, mask_input=l_mask_h)
  
@@ -161,7 +161,7 @@ def main(num_epochs=NEPOCH):
     # COMPARE
     # output dim: (BSIZE, NROW, 4*LSTMHID)
     l_hypo_premwtd = lasagne.layers.ConcatLayer([l_hypo_embed, l_prem_weighted, l_hypo_encode2], axis=2)
-    l_prem_hypowtd = lasagne.layers.ConcatLayer([l_prem_embed, l_hypo_weighted] l_prem_encode2, axis=2)
+    l_prem_hypowtd = lasagne.layers.ConcatLayer([l_prem_embed, l_hypo_weighted, l_prem_encode2], axis=2)
 
     l_hypo_premwtd_dpout = lasagne.layers.DropoutLayer(l_hypo_premwtd, p=DPOUT, rescale=True)
     l_hypo_comphid1 = DenseLayer3DInput(

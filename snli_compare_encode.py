@@ -37,7 +37,7 @@ GCLIP = int(sys.argv[11])           # 100 All gradients above this will be clipp
 NEPOCH = int(sys.argv[12])          # 12 Number of epochs to train the net
 STD = float(sys.argv[13])           # 0.1 Standard deviation of weights in initialization
 UPDATEWE = bool(int(sys.argv[14]))  # 1 0 for False and 1 for True. Update word embedding in training
-GRUENCODE = int(sys.argv[15])
+GRUENCODE = int(sys.argv[15])       # 200
 filename = __file__.split('.')[0] + \
            '_EMBDHIDA' + str(EMBDHIDA) + \
            '_EMBDHIDB' + str(EMBDHIDB) + \
@@ -127,9 +127,9 @@ def main(num_epochs=NEPOCH):
         output_size=W_word_embedding.shape[1],
         W=l_hypo_embed.W)
 	#hypothsis encode
-	l_hypo_encode1 = lasagne.layers.GRULayer(l_hypo_embed, GRUENCODE, mask_input=l_mask_h)
+    l_hypo_encode1 = lasagne.layers.GRULayer(l_hypo_embed, GRUENCODE, mask_input=l_mask_h)
     l_hypo_encode1_dpout = lasagne.layers.DropoutLayer(l_hypo_encode1, p=DPOUT, rescale=True)
-    l_hypo_encode2 = lasagne.layers.GRULayer(l_hypo_embed_dpout, GRUENCODE, mask_input=l_mask_h)
+    l_hypo_encode2 = lasagne.layers.GRULayer(l_hypo_encode1_dpout, GRUENCODE, mask_input=l_mask_h)
     #l_hypo_encode2_dpout = lasagne.layers.DropoutLayer(l_hypo_encode2, p=DPOUT, rescale=True)
 
     #premise encode
@@ -163,7 +163,7 @@ def main(num_epochs=NEPOCH):
     # COMPARE
     # output dim: (BSIZE, NROW, 4*LSTMHID)
     l_hypo_premwtd = lasagne.layers.ConcatLayer([l_hypo_embed, l_prem_weighted, l_hypo_encode2], axis=2)
-    l_prem_hypowtd = lasagne.layers.ConcatLayer([l_prem_embed, l_hypo_weighted],l_prem_encode2], axis=2)
+    l_prem_hypowtd = lasagne.layers.ConcatLayer([l_prem_embed, l_hypo_weighted, l_prem_encode2], axis=2)
 
     l_hypo_premwtd_dpout = lasagne.layers.DropoutLayer(l_hypo_premwtd, p=DPOUT, rescale=True)
     l_hypo_comphid1 = DenseLayer3DInput(
