@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
+'''
+    change the attention
+'''
 from __future__ import print_function
 
 import time
@@ -37,6 +39,7 @@ GCLIP = int(sys.argv[11])           # 100 All gradients above this will be clipp
 NEPOCH = int(sys.argv[12])          # 12 Number of epochs to train the net
 STD = float(sys.argv[13])           # 0.1 Standard deviation of weights in initialization
 UPDATEWE = bool(int(sys.argv[14]))  # 1 0 for False and 1 for True. Update word embedding in training
+ENCHID = int(sys.argv[15])
 filename = __file__.split('.')[0] + \
            '_EMBDHIDA' + str(EMBDHIDA) + \
            '_EMBDHIDB' + str(EMBDHIDB) + \
@@ -126,20 +129,28 @@ def main(num_epochs=NEPOCH):
         output_size=W_word_embedding.shape[1],
         W=l_hypo_embed.W)
 
+    # ENCODE
+    l_hypo_enc1 = lasagne.layers.LSTMLayer(l_hypo_embed, num_units=ENCHID, mask_input=l_mask_h)
+    l_hypo_enc1_dpout = lasagne.layers.DropoutLayer(l_hypo_enc1, p=DPOUT, rescale=True)
+    l_hypo_enc2 = lasagne.layers.LSTMLayer(l_hypo_enc1_dpout, num_units=ENCHID, mask_input=l_mask_h)
+    
+    l_prem_enc1 = lasagne.layers.LSTMLayer(l_prem_embed, num_units=ENCHID, mask_input=l_mask_p)
+    l_prem_enc1_dpout = lasagne.layers.DropoutLayer(l_prem_enc1, p=DPOUT, rescale=True)
+    l_prem_enc2 = lasagne.layers.LSTMLayer(l_prem_enc1_dpout, num_units=ENCHID, mask_input=l_mask_p)
     # ATTEND
-    l_hypo_embed_dpout = lasagne.layers.DropoutLayer(l_hypo_embed, p=DPOUT, rescale=True)
+    l_hypo_embed_dpout = lasagne.layers.DropoutLayer(l_hypo_enc2, p=DPOUT, rescale=True)
     l_hypo_embed_hid1 = DenseLayer3DInput(
         l_hypo_embed_dpout, num_units=EMBDHIDA, nonlinearity=lasagne.nonlinearities.rectify)
     l_hypo_embed_hid1_dpout = lasagne.layers.DropoutLayer(l_hypo_embed_hid1, p=DPOUT, rescale=True)
     l_hypo_embed_hid2 = DenseLayer3DInput(
-        l_hypo_embed_hid1_dpout, num_units=EMBDHIDB, nonlinearity=lasagne.nonlinearities.rectify)
-
-    l_prem_embed_dpout = lasagne.layers.DropoutLayer(l_prem_embed, p=DPOUT, rescale=True)
+        l_hypo_embed_hid1_dpout, num_units=EMBDHIDB, nonlinearity=lasagne.nonlinearities.tanh)
+    
+    l_prem_embed_dpout = lasagne.layers.DropoutLayer(l_prem_enc2, p=DPOUT, rescale=True)
     l_prem_embed_hid1 = DenseLayer3DInput(
         l_prem_embed_dpout, num_units=EMBDHIDA, nonlinearity=lasagne.nonlinearities.rectify)
     l_prem_embed_hid1_dpout = lasagne.layers.DropoutLayer(l_prem_embed_hid1, p=DPOUT, rescale=True)
     l_prem_embed_hid2 = DenseLayer3DInput(
-        l_prem_embed_hid1_dpout, num_units=EMBDHIDB, nonlinearity=lasagne.nonlinearities.rectify)
+        l_prem_embed_hid1_dpout, num_units=EMBDHIDB, nonlinearity=lasagne.nonlinearities.tanh)
     
     # output dim: (BSIZE, NROWx, NROWy)
     l_e = ComputeEmbeddingPool([l_hypo_embed_hid2, l_prem_embed_hid2])

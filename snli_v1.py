@@ -207,7 +207,7 @@ def main(num_epochs=NEPOCH):
         print("{0:24}{1:24}{2}".format(item, item.shape.eval(), numpy.prod(item.shape.eval())))
 
     # if exist param file then load params
-    look_for = 'params' + os.sep + 'params_' + filename + '.pkl'
+    look_for = 'params' + os.sep + 'params_' + filename + '.pkl'+'a'
     if os.path.isfile(look_for):
         print("Resuming from file: " + look_for)
         all_param_values = cPickle.load(open(look_for, 'rb'))
@@ -279,9 +279,9 @@ def main(num_epochs=NEPOCH):
                     print("***dev cost %f, error %f" % (dev_set_cost,  dev_set_error))
 
             # save parameters
-            all_param_values = [p.get_value() for p in all_params]
-            cPickle.dump(all_param_values,
-                         open('params' + os.sep + 'params_' + filename + '.pkl', 'wb'))
+            #all_param_values = [p.get_value() for p in all_params]
+            #cPickle.dump(all_param_values,
+            #             open('params' + os.sep + 'params_' + filename + '.pkl', 'wb'))
 
             dev_set_cost,  dev_set_error  = evaluate('dev')
             test_set_cost, test_set_error = evaluate('test')

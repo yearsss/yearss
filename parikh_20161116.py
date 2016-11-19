@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+'''
+    1.change the formula of attention
+    2.two lstm with highway
+'''
 from __future__ import print_function
 
 import time
@@ -37,6 +41,8 @@ GCLIP = int(sys.argv[11])           # 100 All gradients above this will be clipp
 NEPOCH = int(sys.argv[12])          # 12 Number of epochs to train the net
 STD = float(sys.argv[13])           # 0.1 Standard deviation of weights in initialization
 UPDATEWE = bool(int(sys.argv[14]))  # 1 0 for False and 1 for True. Update word embedding in training
+ENCHID = int(sys.argv[15])          # 200
+
 filename = __file__.split('.')[0] + \
            '_EMBDHIDA' + str(EMBDHIDA) + \
            '_EMBDHIDB' + str(EMBDHIDB) + \
@@ -51,10 +57,12 @@ filename = __file__.split('.')[0] + \
            '_GCLIP' + str(GCLIP) + \
            '_NEPOCH' + str(NEPOCH) + \
            '_STD' + str(STD) + \
-           '_UPDATEWE' + str(UPDATEWE)
+           '_UPDATEWE' + str(UPDATEWE) + \
+           '_ENCHID' + str(ENCHID)
 
 
 def main(num_epochs=NEPOCH):
+
     print("Loading data ...")
     snli = SNLI(batch_size=BSIZE)
     train_batches = list(snli.train_minibatch_generator())
@@ -65,28 +73,7 @@ def main(num_epochs=NEPOCH):
 
     print("Building network ...")
     ########### sentence embedding encoder ###########
-    """
-    # sentence vector, with each number standing for a word number
-    input_var = T.TensorType('int32', [False, False])('sentence_vector')
-    input_var.tag.test_value = numpy.hstack((numpy.random.randint(1, 10000, (BSIZE, 20), 'int32'),
-                                             numpy.zeros((BSIZE, 5)).astype('int32')))
-    input_var.tag.test_value[1, 20:22] = (413, 45)
-    l_in = lasagne.layers.InputLayer(shape=(BSIZE, None), input_var=input_var)
     
-    input_mask = T.TensorType('int32', [False, False])('sentence_mask')
-    input_mask.tag.test_value = numpy.hstack((numpy.ones((BSIZE, 20), dtype='int32'),
-                                             numpy.zeros((BSIZE, 5), dtype='int32')))
-    input_mask.tag.test_value[1, 20:22] = 1
-    l_mask = lasagne.layers.InputLayer(shape=(BSIZE, None), input_var=input_mask)
-
-    # output shape (BSIZE, None, WEDIM)
-    l_word_embed = lasagne.layers.EmbeddingLayer(
-        l_in,
-        input_size=W_word_embedding.shape[0],
-        output_size=W_word_embedding.shape[1],
-        W=W_word_embedding)
-    """
-
     ########### input layers ###########
     # hypothesis
     input_var_h = T.TensorType('int32', [False, False])('hypothesis_vector')
@@ -126,15 +113,39 @@ def main(num_epochs=NEPOCH):
         output_size=W_word_embedding.shape[1],
         W=l_hypo_embed.W)
 
+    # ENCODE 
+    # hypotheis encode with 2 lstm add highway
+    l_hypo_enc_forward1 = lasagne.layers.LSTMLayer(l_hypo_embed, num_units=ENCHID, mask_input=l_mask_h)
+    l_hypo_enc_backward1 = lasagne.layers.LSTMLayer(l_hypo_embed, num_units=ENCHID, backwards=True, mask_input=l_mask_h)
+    
+    l_hypo_enc_fb1 = lasagne.layers.ConcatLayer([l_hypo_enc_forward1,l_hypo_enc_backward1,l_hypo_embed], axis=2)
+    l_hypo_enc_fb1_dpout = lasagne.layers.DropoutLayer(l_hypo_enc_fb1, p=DPOUT, rescale=True)
+
+    l_hypo_enc_forward2 = lasagne.layers.LSTMLayer(l_hypo_enc_fb1_dpout, num_units=3*ENCHID, mask_input=l_mask_h)
+    l_hypo_enc_backward2 = lasagne.layers.LSTMLayer(l_hypo_enc_fb1_dpout, num_units=3*ENCHID, backwards=True, mask_input=l_mask_h)
+    l_hypo_enc_fb2 = lasagne.layers.ConcatLayer([l_hypo_enc_forward2,l_hypo_enc_backward2], axis=2)
+    #l_hypo_enc_fb2_dpout = lasagne.layers.Dropout(l_hypo_enc_fb2, p=DPOUT, rescale=True)
+    
+    l_prem_enc_forward1 = lasagne.layers.LSTMLayer(l_prem_embed, num_units=ENCHID, mask_input=l_mask_p)
+    l_prem_enc_backward1 = lasagne.layers.LSTMLayer(l_prem_embed, num_units=ENCHID, backwards=True, mask_input=l_mask_p)
+
+    l_prem_enc_fb1 = lasagne.layers.ConcatLayer([l_prem_enc_forward1,l_prem_enc_backward1,l_prem_embed], axis=2)
+    l_prem_enc_fb1_dpout = lasagne.layers.DropoutLayer(l_prem_enc_fb1, p=DPOUT, rescale=True)
+    
+    l_prem_enc_forward2 = lasagne.layers.LSTMLayer(l_prem_enc_fb1_dpout, num_units=3*ENCHID, mask_input=l_mask_p)
+    l_prem_enc_backward2 = lasagne.layers.LSTMLayer(l_prem_enc_fb1_dpout, num_units=3*ENCHID, backwards=True, mask_input=l_mask_p)
+    l_prem_enc_fb2 = lasagne.layers.ConcatLayer([l_prem_enc_forward2,l_prem_enc_backward2], axis=2)
+    #l_prem_enc_fb2_dpout = lasagne.layers.Dropout(l_prem_enc_fb2, p=DPOUT, rescale=True)
+    
     # ATTEND
-    l_hypo_embed_dpout = lasagne.layers.DropoutLayer(l_hypo_embed, p=DPOUT, rescale=True)
+    l_hypo_embed_dpout = lasagne.layers.DropoutLayer(l_hypo_enc_fb2, p=DPOUT, rescale=True)
     l_hypo_embed_hid1 = DenseLayer3DInput(
         l_hypo_embed_dpout, num_units=EMBDHIDA, nonlinearity=lasagne.nonlinearities.rectify)
     l_hypo_embed_hid1_dpout = lasagne.layers.DropoutLayer(l_hypo_embed_hid1, p=DPOUT, rescale=True)
     l_hypo_embed_hid2 = DenseLayer3DInput(
         l_hypo_embed_hid1_dpout, num_units=EMBDHIDB, nonlinearity=lasagne.nonlinearities.rectify)
 
-    l_prem_embed_dpout = lasagne.layers.DropoutLayer(l_prem_embed, p=DPOUT, rescale=True)
+    l_prem_embed_dpout = lasagne.layers.DropoutLayer(l_prem_enc_fb2, p=DPOUT, rescale=True)
     l_prem_embed_hid1 = DenseLayer3DInput(
         l_prem_embed_dpout, num_units=EMBDHIDA, nonlinearity=lasagne.nonlinearities.rectify)
     l_prem_embed_hid1_dpout = lasagne.layers.DropoutLayer(l_prem_embed_hid1, p=DPOUT, rescale=True)
@@ -285,9 +296,9 @@ def main(num_epochs=NEPOCH):
                     print("***dev cost %f, error %f" % (dev_set_cost,  dev_set_error))
 
             # save parameters
-            all_param_values = [p.get_value() for p in all_params]
-            cPickle.dump(all_param_values,
-                         open('params' + os.sep + 'params_' + filename + '.pkl', 'wb'))
+            #all_param_values = [p.get_value() for p in all_params]
+            #cPickle.dump(all_param_values,
+            #             open('params' + os.sep + 'params_' + filename + '.pkl', 'wb'))
 
             dev_set_cost,  dev_set_error  = evaluate('dev')
             test_set_cost, test_set_error = evaluate('test')

@@ -37,6 +37,9 @@ GCLIP = int(sys.argv[11])           # 100 All gradients above this will be clipp
 NEPOCH = int(sys.argv[12])          # 12 Number of epochs to train the net
 STD = float(sys.argv[13])           # 0.1 Standard deviation of weights in initialization
 UPDATEWE = bool(int(sys.argv[14]))  # 1 0 for False and 1 for True. Update word embedding in training
+#PARAM_FILE = sys.argv[15]
+#RESULT_FILE = sys.argv[16]
+
 filename = __file__.split('.')[0] + \
            '_EMBDHIDA' + str(EMBDHIDA) + \
            '_EMBDHIDB' + str(EMBDHIDB) + \
@@ -56,13 +59,25 @@ filename = __file__.split('.')[0] + \
 
 def main(num_epochs=NEPOCH):
     print("Loading data ...")
-    snli = SNLI(batch_size=BSIZE)
+    snli = SNLI(batch_size=BSIZE,loadall=True)
     train_batches = list(snli.train_minibatch_generator())
     dev_batches = list(snli.dev_minibatch_generator())
     test_batches = list(snli.test_minibatch_generator())
     W_word_embedding = snli.weight  # W shape: (# vocab size, WE_DIM)
+    inv_w_reffered = snli.num2word
+    classname = snli.classname
     del snli
-
+    '''
+    print("Check File exist ...")
+    if PARAM_FILE:
+        if not os.path.isfile(PARAM_FILE):
+            print("PARAM_FILE is unvalid")
+            os._exit(0)
+    if RESULT_FILE:
+        if not os.path.isfile(RESULT_FILE):
+            print("RESULT_FILE is unvalid:")
+            os._exit(0)
+    '''
     print("Building network ...")
     ########### sentence embedding encoder ###########
     """
@@ -125,7 +140,6 @@ def main(num_epochs=NEPOCH):
         input_size=W_word_embedding.shape[0],
         output_size=W_word_embedding.shape[1],
         W=l_hypo_embed.W)
-
     # ATTEND
     l_hypo_embed_dpout = lasagne.layers.DropoutLayer(l_hypo_embed, p=DPOUT, rescale=True)
     l_hypo_embed_hid1 = DenseLayer3DInput(
@@ -211,15 +225,19 @@ def main(num_epochs=NEPOCH):
     print("-----------------------------------------------------------------")
     for item in all_params:
         print("{0:24}{1:24}{2}".format(item, item.shape.eval(), numpy.prod(item.shape.eval())))
-
+    
     # if exist param file then load params
-    look_for = 'params' + os.sep + 'params_' + filename + '.pkl'
-    if os.path.isfile(look_for):
-        print("Resuming from file: " + look_for)
-        all_param_values = cPickle.load(open(look_for, 'rb'))
-        for p, v in zip(all_params, all_param_values):
-            p.set_value(v)
-   
+    '''
+    if PARAM_FILE :
+        look_for = PARAM_FILE
+        if os.path.isfile(look_for):
+            print("Resuming from file: " + look_for)
+            all_param_values = cPickle.load(open(look_for, 'rb'))
+            for p, v in zip(all_params, all_param_values):
+                p.set_value(v)
+        else:
+            print("param file is not exist")
+    '''
     # Compute SGD updates for training
     print("Computing updates ...")
     updates = lasagne.updates.adagrad(cost, all_params, LR)
@@ -236,22 +254,41 @@ def main(num_epochs=NEPOCH):
          l_in_p.input_var, l_mask_p.input_var, target_values],
         [cost_clean, error_rate_clean])
         # mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=False))
+    comppue_network_prediction = theano.function(
+        [l_in_h.input_var, l_mask_h.input_var,
+         l_in_p.input_var, l_mask_p.input_var, target_values],
+        [network_prediction_clean,target_values])
 
     def evaluate(mode):
         if mode == 'dev':
             data = dev_batches
         if mode == 'test':
             data = test_batches
+        if mode == 'train':
+            data = train_batches
         
         set_cost = 0.
         set_error_rate = 0.
+        #rf = open(RESULT_FILE,"w")
         for batches_seen, (hypo, hm, premise, pm, truth) in enumerate(data, 1):
             _cost, _error = compute_cost(hypo, hm, premise, pm, truth)
             set_cost = (1.0 - 1.0 / batches_seen) * set_cost + \
                        1.0 / batches_seen * _cost
             set_error_rate = (1.0 - 1.0 / batches_seen) * set_error_rate + \
                              1.0 / batches_seen * _error
-        
+            
+            if write_if:
+                _predict, _target = compute_network_prediction(hypo, hm, premise, pm, truth)
+                rf.write(" ".joins(map(lambda x:inv_w_reffered[x],filter(lambda x:x!=0,hypo))))
+                rf.write("\t")
+                rf.write(" ".joins(map(lambda x:inv_w_reffered[x],filter(lambda x:x!=0,premise))))
+                rf.write("\t")
+                rf.write(classname[_predict])
+                rf.write("\t")
+                rf.write(classname[_target])
+                rf.write("\n")
+
+        #rf.close()
         return set_cost, set_error_rate
     
     print("Done. Evaluating scratch model ...")
@@ -270,6 +307,7 @@ def main(num_epochs=NEPOCH):
                                  1.0 / batches_seen * _cost
                 train_set_error = (1.0 - 1.0 / batches_seen) * train_set_error + \
                                   1.0 / batches_seen * _error
+                '''
                 if batches_seen % 100 == 0:
                     end = time.time()
                     print("Sample %d %.2fs, lr %.4f, train cost %f, error %f"  % (
@@ -283,7 +321,7 @@ def main(num_epochs=NEPOCH):
                 if batches_seen % 2000 == 0:
                     dev_set_cost,  dev_set_error  = evaluate('dev')
                     print("***dev cost %f, error %f" % (dev_set_cost,  dev_set_error))
-
+                '''
             # save parameters
             all_param_values = [p.get_value() for p in all_params]
             cPickle.dump(all_param_values,
@@ -291,7 +329,7 @@ def main(num_epochs=NEPOCH):
 
             dev_set_cost,  dev_set_error  = evaluate('dev')
             test_set_cost, test_set_error = evaluate('test')
-
+            train_set_cost, train_set_error = evalate('train')
             print("epoch %d, cost: train %f dev %f test %f;\n"
                   "         error train %f dev %f test %f" % (
                 epoch,

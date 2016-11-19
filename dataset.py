@@ -15,7 +15,7 @@ class SNLI(object):
         
         data_file = open(self.datapath, 'rb')
         cPickle.load(data_file)
-        cPickle.load(data_file)
+        self.classname = cPickle.load(data_file)
         self.train_set, self.dev_set, self.test_set = cPickle.load(data_file)
         self.weight = cPickle.load(data_file).astype(theano.config.floatX)
         if loadall:
@@ -30,6 +30,7 @@ class SNLI(object):
         self.train_ptr = 0
         self.dev_ptr = 0
         self.test_ptr = 0
+    
 
     def train_minibatch_generator(self):
         while self.train_ptr <= self.train_size - self.batch_size:
